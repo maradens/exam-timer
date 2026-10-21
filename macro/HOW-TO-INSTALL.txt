@@ -1,0 +1,31 @@
+EXAM TIMER FOR POWERPOINT - SETUP (one time per presentation, about 2 minutes)
+
+1. Open the PowerPoint file where you want the timer.
+2. Press Alt+F11 (the VBA editor opens).
+3. In the editor: File > Import File...  >  choose ExamTimer.bas  >  Open.
+4. Close the editor window.
+5. Go to the slide where the timer should appear (a blank slide works best).
+6. Press Alt+F8, select InsertExamTimer, click Run.
+7. Type the exam length in minutes (e.g. 90, or 1:30) and press OK.
+8. File > Save As > choose "PowerPoint Macro-Enabled Presentation (*.pptm)".
+   (A normal .pptx would throw the timer code away.)
+
+USING IT IN CLASS
+- Start the slide show (F5) and go to the timer slide.
+- Click Start. Click Pause / Resume any time.
+- +1 / +5 / -1 / -5 adjust the remaining minutes while it runs.
+- Set time asks for a new exam length. Reset goes back to the full time.
+- The timer turns amber at 10 min left, red at 5 min left, and flashes
+  "TIME'S UP - please stop writing" at zero.
+- It follows the real clock, so it stays accurate even if you go to another
+  slide and come back.
+
+WHEN YOU OPEN THE .pptm LATER
+- If a yellow bar says "Macros have been disabled", click Enable Content.
+
+OTHER
+- To remove the timer from a slide: Alt+F8 > RemoveExamTimer > Run.
+- You can move, resize or recolour the timer shapes like any other shape;
+  just don't rename them (they all start with "ET_").
+- To change the amber/red warning times, open Alt+F11 and edit
+  WARN_MINUTES and DANGER_MINUTES near the top of the ExamTimer module.

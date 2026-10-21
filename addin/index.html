@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exam Timer</title>
+<script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+<style>
+  :root {
+    --bg: #ffffff; --text: #141414; --muted: #787878; --track: #e6e6e6;
+    --btn: #f0f0f0; --btn-hover: #e2e2e2; --ok: #00a650; --warn: #f59e00; --danger: #d32f2f;
+    --panel: #ffffff; --border: #d9d9d9;
+  }
+  body.dark {
+    --bg: #111418; --text: #f4f4f4; --muted: #9aa0a6; --track: #2a2f36;
+    --btn: #22272e; --btn-hover: #2d333b; --panel: #1b1f24; --border: #3a4049;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+    display: flex; flex-direction: column; user-select: none;
+  }
+  .stage { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; padding: 2vh 3vw 0; }
+  #title { font-size: min(5.5vw, 8vh); font-weight: 600; color: var(--muted); letter-spacing: .02em; text-align: center; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #time {
+    font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+    font-size: min(27vw, 48vh); color: var(--text); transition: color .4s;
+  }
+  #time.long { font-size: min(19vw, 46vh); }
+  body.warn #time { color: var(--warn); }
+  body.danger #time, body.done #time { color: var(--danger); }
+  body.done.flash #time { animation: flash 1s steps(1) infinite; }
+  @keyframes flash { 50% { opacity: .15; } }
+  #status { font-size: min(4.2vw, 6.5vh); color: var(--muted); margin-top: 1vh; min-height: 1.3em; text-align: center; }
+  body.done #status { color: var(--danger); font-weight: 700; }
+  .bar { width: 80%; height: max(6px, 2vh); background: var(--track); border-radius: 99px; margin-top: 2.5vh; overflow: hidden; }
+  #fill { height: 100%; width: 100%; background: var(--ok); border-radius: 99px; transition: width .25s linear, background-color .4s; }
+  body.warn #fill { background: var(--warn); }
+  body.danger #fill, body.done #fill { background: var(--danger); }
+
+  .controls { display: flex; gap: 1.2vw; padding: 2.5vh 2vw 2.5vh; justify-content: center; transition: opacity .5s; }
+  body.idle .controls { opacity: 0; }
+  body.idle { cursor: none; }
+  button {
+    font: inherit; font-weight: 700; color: var(--text); background: var(--btn);
+    border: 0; border-radius: 10px; cursor: pointer; height: min(11vh, 9vw); min-width: min(9vw, 14vh);
+    padding: 0 1.4vw; font-size: min(3.4vw, 5.2vh);
+  }
+  button:hover { background: var(--btn-hover); }
+  button.primary { min-width: min(18vw, 28vh); background: var(--ok); color: #fff; }
+  body.running button.primary { background: var(--btn); color: var(--text); }
+  button:focus-visible { outline: 3px solid var(--ok); outline-offset: 2px; }
+
+  /* settings panel */
+  #panel { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; padding: 3vh 3vw; }
+  #panel.open { display: flex; }
+  .card { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; width: min(560px, 100%); max-height: 100%; overflow: auto; font-size: 15px; user-select: text; }
+  .card h2 { margin: 0 0 12px; font-size: 18px; }
+  .card label { display: block; font-weight: 600; margin: 12px 0 6px; }
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; }
+  .presets button { height: 34px; min-width: 0; font-size: 14px; padding: 0 12px; border-radius: 8px; }
+  .presets button.sel { background: var(--ok); color: #fff; }
+  .card input[type=text], .card input[type=number] { font: inherit; width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); }
+  .row { display: flex; gap: 10px; }
+  .row > div { flex: 1; }
+  .check { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-weight: 500; }
+  .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+  .actions button { height: 38px; min-width: 90px; font-size: 15px; }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 4px; }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div id="title"></div>
+    <div id="time">60:00</div>
+    <div id="status"></div>
+    <div class="bar"><div id="fill"></div></div>
+  </div>
+
+  <div class="controls">
+    <button id="m5" title="Remove 5 minutes">&minus;5</button>
+    <button id="m1" title="Remove 1 minute">&minus;1</button>
+    <button id="start" class="primary" title="Start / Pause (Space)">Start</button>
+    <button id="reset" title="Reset to full time (R)">Reset</button>
+    <button id="p1" title="Add 1 minute">+1</button>
+    <button id="p5" title="Add 5 minutes">+5</button>
+    <button id="settings" title="Set exam time and options">&#9881;</button>
+  </div>
+
+  <div id="panel" role="dialog" aria-modal="true" aria-labelledby="ph">
+    <div class="card">
+      <h2 id="ph">Exam timer settings</h2>
+      <label>Exam length</label>
+      <div class="presets" id="presets"></div>
+      <div class="row" style="margin-top:8px">
+        <div><input type="number" id="hours" min="0" max="23" placeholder="Hours"><div class="hint">hours</div></div>
+        <div><input type="number" id="mins" min="0" max="59" placeholder="Minutes"><div class="hint">minutes</div></div>
+      </div>
+      <label for="ttl">Title (optional)</label>
+      <input type="text" id="ttl" placeholder="e.g. Mathematics &ndash; Paper 1" maxlength="80">
+      <div class="row">
+        <div><label for="warn">Amber at (min left)</label><input type="number" id="warn" min="0"></div>
+        <div><label for="danger">Red at (min left)</label><input type="number" id="danger" min="0"></div>
+      </div>
+      <label class="check"><input type="checkbox" id="sound"> Play a chime when time is up</label>
+      <label class="check"><input type="checkbox" id="dark"> Dark background</label>
+      <label class="check"><input type="checkbox" id="autohide"> Hide buttons while running (move the mouse to show them)</label>
+      <div class="actions">
+        <button id="cancel">Cancel</button>
+        <button id="save" class="primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+  var KEY = "examTimerState";
+  var PRESETS = [15, 30, 45, 60, 90, 120, 180];
+  var defaults = { total: 3600, remaining: 3600, endAt: 0, running: false, title: "",
+                   warn: 10, danger: 5, sound: true, dark: false, autohide: true };
+  var S = Object.assign({}, defaults);
+  var officeReady = false;
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---------- persistence: Office document settings (per timer on slide), else localStorage ----------
+  function load() {
+    var raw = null;
+    try { if (officeReady) raw = Office.context.document.settings.get(KEY); } catch (e) {}
+    if (!raw) { try { raw = JSON.parse(localStorage.getItem(KEY)); } catch (e) {} }
+    if (raw && typeof raw === "object") S = Object.assign({}, defaults, raw);
+  }
+  var saveTimer = null;
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
+    if (!officeReady) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      try {
+        Office.context.document.settings.set(KEY, S);
+        Office.context.document.settings.saveAsync(function () {});
+      } catch (e) {}
+    }, 300);
+  }
+
+  // ---------- time ----------
+  function left() { return S.running ? (S.endAt - Date.now()) / 1000 : S.remaining; }
+  function fmt(sec) {
+    var h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+    var p = function (n) { return (n < 10 ? "0" : "") + n; };
+    return h > 0 ? h + ":" + p(m) + ":" + p(s) : p(m) + ":" + p(s);
+  }
+  function lengthText(sec) {
+    var m = Math.round(sec / 60), h = Math.floor(m / 60), r = m % 60;
+    if (h && !r) return h + (h === 1 ? " hour" : " hours");
+    if (h) return h + " h " + r + " min";
+    return m + " min";
+  }
+
+  var lastShown = null, doneHandled = false;
+  function render() {
+    var l = left();
+    if (S.running && l <= 0) { finish(); l = 0; }
+    var shown = Math.max(0, Math.ceil(l - 1e-6));
+    var b = document.body;
+    b.classList.toggle("running", S.running);
+    b.classList.toggle("done", shown === 0);
+    b.classList.toggle("danger", shown > 0 && shown <= S.danger * 60);
+    b.classList.toggle("warn", shown > S.danger * 60 && shown <= S.warn * 60);
+    b.classList.toggle("dark", !!S.dark);
+    $("fill").style.width = (S.total > 0 ? Math.max(0, Math.min(1, l / S.total)) * 100 : 0) + "%";
+
+    if (shown !== lastShown) {
+      lastShown = shown;
+      $("time").textContent = fmt(shown);
+      $("time").classList.toggle("long", shown >= 3600);
+    }
+    var st;
+    if (shown === 0) st = "TIME’S UP — please stop writing";
+    else if (S.running) st = "Ends at " + new Date(S.endAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    else if (S.remaining >= S.total) st = "Ready — " + lengthText(S.total);
+    else st = "Paused";
+    $("status").textContent = st;
+    $("title").textContent = S.title;
+    $("title").style.display = S.title ? "" : "none";
+    $("start").textContent = S.running ? "Pause" : (shown > 0 && S.remaining < S.total ? "Resume" : "Start");
+    if (!S.running) b.classList.remove("idle");
+  }
+
+  function finish() {
+    S.running = false; S.remaining = 0; save();
+    if (!doneHandled) {
+      doneHandled = true;
+      document.body.classList.add("flash");
+      setTimeout(function () { document.body.classList.remove("flash"); }, 30000);
+      if (S.sound) chime();
+    }
+  }
+
+  // ---------- actions ----------
+  function start() {
+    if (S.remaining <= 0) S.remaining = S.total;
+    S.endAt = Date.now() + S.remaining * 1000; S.running = true;
+    doneHandled = false; document.body.classList.remove("flash");
+    unlockAudio(); save(); render(); armIdle();
+  }
+  function pause() { S.remaining = Math.max(0, left()); S.running = false; save(); render(); }
+  function reset() { S.running = false; S.remaining = S.total; doneHandled = false; document.body.classList.remove("flash"); save(); render(); }
+  function adjust(sec) {
+    var r = Math.max(0, left() + sec);
+    if (r > S.total) S.total = r;
+    if (S.running) S.endAt = Date.now() + r * 1000; else S.remaining = r;
+    if (r > 0) { doneHandled = false; document.body.classList.remove("flash"); }
+    save(); render();
+  }
+
+  $("start").onclick = function () { S.running ? pause() : start(); };
+  $("reset").onclick = reset;
+  $("p1").onclick = function () { adjust(60); };
+  $("p5").onclick = function () { adjust(300); };
+  $("m1").onclick = function () { adjust(-60); };
+  $("m5").onclick = function () { adjust(-300); };
+
+  document.addEventListener("keydown", function (e) {
+    if ($("panel").classList.contains("open")) { if (e.key === "Escape") closePanel(); return; }
+    if (e.key === " ") { e.preventDefault(); S.running ? pause() : start(); }
+    else if (e.key === "r" || e.key === "R") reset();
+    else if (e.key === "ArrowUp") adjust(60);
+    else if (e.key === "ArrowDown") adjust(-60);
+  });
+
+  // ---------- auto-hide controls while running ----------
+  var idleTimer = null;
+  function armIdle() {
+    document.body.classList.remove("idle");
+    clearTimeout(idleTimer);
+    if (S.running && S.autohide) idleTimer = setTimeout(function () { if (S.running) document.body.classList.add("idle"); }, 3000);
+  }
+  ["mousemove", "mousedown", "touchstart"].forEach(function (ev) { document.addEventListener(ev, armIdle, { passive: true }); });
+
+  // ---------- sound ----------
+  var ctx = null;
+  function unlockAudio() {
+    try { if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)(); if (ctx.state === "suspended") ctx.resume(); } catch (e) {}
+  }
+  function chime() {
+    if (!ctx) return;
+    [0, 0.45, 0.9].forEach(function (t, i) {
+      var o = ctx.createOscillator(), g = ctx.createGain(), at = ctx.currentTime + t;
+      o.type = "sine"; o.frequency.value = i === 2 ? 1046.5 : 784;
+      g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(0.4, at + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.6);
+      o.connect(g); g.connect(ctx.destination); o.start(at); o.stop(at + 0.65);
+    });
+  }
+
+  // ---------- settings panel ----------
+  var pickedMins = null;
+  PRESETS.forEach(function (m) {
+    var b = document.createElement("button");
+    b.textContent = m < 60 ? m + " min" : (m % 60 ? (m / 60).toFixed(1) + " h" : m / 60 + " h");
+    b.dataset.m = m;
+    b.onclick = function () { setPicked(m); };
+    $("presets").appendChild(b);
+  });
+  function setPicked(m) {
+    pickedMins = m;
+    $("hours").value = Math.floor(m / 60); $("mins").value = m % 60;
+    markPresets();
+  }
+  function markPresets() {
+    var m = (+$("hours").value || 0) * 60 + (+$("mins").value || 0);
+    Array.prototype.forEach.call($("presets").children, function (b) { b.classList.toggle("sel", +b.dataset.m === m); });
+  }
+  $("hours").oninput = $("mins").oninput = markPresets;
+
+  function openPanel() {
+    setPicked(Math.round(S.total / 60));
+    $("ttl").value = S.title; $("warn").value = S.warn; $("danger").value = S.danger;
+    $("sound").checked = S.sound; $("dark").checked = S.dark; $("autohide").checked = S.autohide;
+    $("panel").classList.add("open");
+  }
+  function closePanel() { $("panel").classList.remove("open"); }
+  $("settings").onclick = openPanel;
+  $("cancel").onclick = closePanel;
+  $("save").onclick = function () {
+    var m = (+$("hours").value || 0) * 60 + (+$("mins").value || 0);
+    if (m > 0 && m * 60 !== S.total) { S.total = m * 60; S.remaining = S.total; S.running = false; doneHandled = false; }
+    S.title = $("ttl").value.trim();
+    S.warn = Math.max(0, +$("warn").value || 0);
+    S.danger = Math.max(0, +$("danger").value || 0);
+    S.sound = $("sound").checked; S.dark = $("dark").checked; S.autohide = $("autohide").checked;
+    closePanel(); lastShown = null; save(); render();
+  };
+
+  // ---------- boot ----------
+  function boot() {
+    load();
+    if (S.running && left() <= 0) { S.running = false; S.remaining = 0; doneHandled = true; }
+    lastShown = null; render(); armIdle();
+    setInterval(render, 200);
+  }
+  if (window.Office && Office.onReady) {
+    Office.onReady(function (info) { officeReady = !!(info && info.host); boot(); });
+  } else { boot(); }
+})();
+</script>
+</body>
+</html>
